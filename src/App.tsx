@@ -11,6 +11,7 @@ import Layout from "@/components/Layout";
 const Index = lazy(() => import("@/pages/Index"));
 const DeviceManagement = lazy(() => import("@/pages/DeviceManagement"));
 const TR069Management = lazy(() => import("@/pages/TR069Management"));
+const Monitoring = lazy(() => import("@/pages/Monitoring"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -34,11 +35,11 @@ const App = () => (
               <Route index element={<Index />} />
               <Route path="devices" element={<DeviceManagement />} />
               <Route path="tr069" element={<TR069Management />} />
+              <Route path="monitoring" element={<Monitoring />} />
               {/* As rotas abaixo seriam implementadas conforme a continuação do desenvolvimento */}
               {/*
               <Route path="wifi" element={<WifiMeshManagement />} />
               <Route path="firmware" element={<FirmwareManagement />} />
-              <Route path="monitoring" element={<Monitoring />} />
               <Route path="customers" element={<CustomerManagement />} />
               <Route path="logs" element={<LogsViewer />} />
               <Route path="settings" element={<SystemSettings />} />
