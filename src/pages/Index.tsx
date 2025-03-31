@@ -1,9 +1,15 @@
 
-import { Router, Wifi, Box, AlertCircle, Activity } from "lucide-react";
+import { memo } from "react";
+import { Router, Wifi, Box, AlertCircle } from "lucide-react";
 import DeviceStatusCard from "@/components/DeviceStatusCard";
 import DeviceList from "@/components/DeviceList";
 import StatisticsChart from "@/components/StatisticsChart";
 import RecentAlerts from "@/components/RecentAlerts";
+
+// Memorizando os componentes para evitar re-renderizações desnecessárias
+const MemoizedDeviceList = memo(DeviceList);
+const MemoizedStatisticsChart = memo(StatisticsChart);
+const MemoizedRecentAlerts = memo(RecentAlerts);
 
 const Index = () => {
   return (
@@ -41,13 +47,13 @@ const Index = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <StatisticsChart title="Estatísticas de Rede" />
-        <RecentAlerts />
+        <MemoizedStatisticsChart title="Estatísticas de Rede" />
+        <MemoizedRecentAlerts />
       </div>
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Dispositivos Recentes</h2>
-        <DeviceList />
+        <MemoizedDeviceList />
       </div>
     </div>
   );
