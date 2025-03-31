@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -44,11 +45,120 @@ import {
   Download,
   FileCode,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { tr069Service, TR069Device } from "@/services/tr069Service";
+import { toast } from "@/hooks/use-toast";
 
 const TR069Management = () => {
-  const [selectedDevice, setSelectedDevice] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deviceIdFromUrl = searchParams.get('device');
+  
+  const [selectedDevice, setSelectedDevice] = useState<string>(deviceIdFromUrl || "");
+  const [deviceDetails, setDeviceDetails] = useState<TR069Device | null>(null);
+  const [devices, setDevices] = useState<TR069Device[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [deviceLogs, setDeviceLogs] = useState<string[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [deviceSearch, setDeviceSearch] = useState("");
+
+  // Carregar lista de dispositivos quando o componente montar
+  useEffect(() => {
+    loadDevices();
+  }, []);
+
+  // Carregar detalhes do dispositivo quando selecionar um dispositivo
+  useEffect(() => {
+    if (selectedDevice) {
+      loadDeviceDetails(selectedDevice);
+      // Atualizar a URL
+      setSearchParams({ device: selectedDevice });
+    }
+  }, [selectedDevice]);
+
+  // Funções para carregar dados
+  const loadDevices = async () => {
+    setIsLoading(true);
+    try {
+      const loadedDevices = await tr069Service.getDevices();
+      setDevices(loadedDevices);
+      
+      // Se tem um dispositivo na URL e ele ainda não foi carregado
+      if (deviceIdFromUrl && !deviceDetails) {
+        loadDeviceDetails(deviceIdFromUrl);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dispositivos:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar a lista de dispositivos",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadDeviceDetails = async (deviceId: string) => {
+    setIsLoading(true);
+    try {
+      const device = await tr069Service.getDeviceById(deviceId);
+      setDeviceDetails(device);
+      
+      // Carregar logs do dispositivo
+      loadDeviceLogs(deviceId);
+    } catch (error) {
+      console.error("Erro ao carregar detalhes do dispositivo:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os detalhes do dispositivo",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadDeviceLogs = async (deviceId: string) => {
+    setIsLoadingLogs(true);
+    try {
+      const logs = await tr069Service.getDeviceLogs(deviceId);
+      setDeviceLogs(logs);
+    } catch (error) {
+      console.error("Erro ao carregar logs do dispositivo:", error);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  // Funções para interagir com o dispositivo
+  const handleRebootDevice = async () => {
+    if (!selectedDevice) return;
+    
+    try {
+      await tr069Service.rebootDevice(selectedDevice);
+    } catch (error) {
+      console.error("Erro ao reiniciar dispositivo:", error);
+    }
+  };
+
+  // Função para salvar configurações do dispositivo
+  const handleSaveSettings = async (tab: string) => {
+    if (!selectedDevice || !deviceDetails) return;
+    
+    // Simulando salvamento de configurações
+    toast({
+      title: "Configurações salvas",
+      description: `As configurações de ${tab} foram salvas com sucesso`,
+    });
+  };
+
+  // Filtragem de dispositivos
+  const filteredDevices = devices.filter(device => 
+    device.id.toLowerCase().includes(deviceSearch.toLowerCase()) || 
+    device.name.toLowerCase().includes(deviceSearch.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -78,6 +188,8 @@ const TR069Management = () => {
                     id="device-search"
                     placeholder="Buscar por ID ou nome..."
                     className="w-full"
+                    value={deviceSearch}
+                    onChange={(e) => setDeviceSearch(e.target.value)}
                   />
                 </div>
               </div>
@@ -89,18 +201,41 @@ const TR069Management = () => {
                 <SelectContent>
                   <SelectGroup>
                     <SelectLabel>Dispositivos Online</SelectLabel>
-                    <SelectItem value="XBHQU23321002432">
-                      XBHQU23321002432 - Roteador WiFi Fibra
-                    </SelectItem>
-                    <SelectItem value="XBHQU23321002435">
-                      XBHQU23321002435 - Roteador WiFi Fibra
-                    </SelectItem>
-                    <SelectItem value="XBHQU23321002436">
-                      XBHQU23321002436 - ONT Fibra
-                    </SelectItem>
+                    {filteredDevices
+                      .filter(device => device.status === "online")
+                      .map(device => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.id} - {device.name}
+                        </SelectItem>
+                      ))
+                    }
+                    
+                    <SelectLabel className="mt-2">Outros Dispositivos</SelectLabel>
+                    {filteredDevices
+                      .filter(device => device.status !== "online")
+                      .map(device => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.id} - {device.name}
+                        </SelectItem>
+                      ))
+                    }
                   </SelectGroup>
                 </SelectContent>
               </Select>
+
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={loadDevices}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw size={16} className="mr-2" />
+                )}
+                Atualizar Lista
+              </Button>
 
               <Separator />
 
@@ -110,19 +245,36 @@ const TR069Management = () => {
                   <span className="font-medium">Ações do Dispositivo</span>
                 </div>
                 <div className="space-y-2">
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    onClick={handleRebootDevice}
+                    disabled={!selectedDevice || isLoading}
+                  >
                     <RefreshCw size={16} className="mr-2" />
                     Reiniciar Dispositivo
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    disabled={!selectedDevice || isLoading}
+                  >
                     <FileCode size={16} className="mr-2" />
                     Baixar Configuração
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    disabled={!selectedDevice || isLoading}
+                  >
                     <Upload size={16} className="mr-2" />
                     Atualizar Firmware
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start"
+                    disabled={!selectedDevice || isLoading}
+                  >
                     <Clock size={16} className="mr-2" />
                     Agendar Tarefas
                   </Button>
@@ -136,13 +288,18 @@ const TR069Management = () => {
           <CardHeader>
             <CardTitle>Configuração TR-069</CardTitle>
             <CardDescription>
-              {selectedDevice
-                ? `Configurando dispositivo: ${selectedDevice}`
+              {deviceDetails
+                ? `Configurando dispositivo: ${deviceDetails.id} (${deviceDetails.name})`
                 : "Selecione um dispositivo para iniciar a configuração"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {selectedDevice ? (
+            {isLoading ? (
+              <div className="flex justify-center items-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2 text-lg">Carregando configurações...</span>
+              </div>
+            ) : deviceDetails ? (
               <Tabs defaultValue="general">
                 <TabsList className="mb-4">
                   <TabsTrigger value="general">
@@ -170,7 +327,7 @@ const TR069Management = () => {
                         <Label htmlFor="device-name">Nome do Dispositivo</Label>
                         <Input
                           id="device-name"
-                          defaultValue="Roteador WiFi Fibra"
+                          defaultValue={deviceDetails.name}
                         />
                       </div>
 
@@ -224,7 +381,7 @@ const TR069Management = () => {
                           <Label htmlFor="acs-url">URL do Servidor ACS</Label>
                           <Input
                             id="acs-url"
-                            defaultValue="https://acs.varzeainet.com.br:9443/acs"
+                            defaultValue={deviceDetails.parameters?.["Device.ManagementServer.URL"] || "https://acs.varzeainet.com.br:9443/acs"}
                           />
                         </div>
 
@@ -232,7 +389,10 @@ const TR069Management = () => {
                           <Label htmlFor="acs-username">
                             Usuário do Servidor ACS
                           </Label>
-                          <Input id="acs-username" defaultValue="varzea-acs" />
+                          <Input 
+                            id="acs-username" 
+                            defaultValue={deviceDetails.parameters?.["Device.ManagementServer.Username"] || "varzea-acs"} 
+                          />
                         </div>
 
                         <div className="space-y-2">
@@ -250,7 +410,10 @@ const TR069Management = () => {
                           <Label htmlFor="inform-interval">
                             Intervalo de Inform (segundos)
                           </Label>
-                          <Input id="inform-interval" defaultValue="300" />
+                          <Input 
+                            id="inform-interval" 
+                            defaultValue={deviceDetails.parameters?.["Device.ManagementServer.PeriodicInformInterval"] || "300"} 
+                          />
                         </div>
                       </div>
 
@@ -264,7 +427,9 @@ const TR069Management = () => {
 
                     <div className="flex justify-end gap-2">
                       <Button variant="outline">Cancelar</Button>
-                      <Button>Salvar Configurações</Button>
+                      <Button onClick={() => handleSaveSettings('geral')}>
+                        Salvar Configurações
+                      </Button>
                     </div>
                   </div>
                 </TabsContent>
@@ -331,7 +496,7 @@ const TR069Management = () => {
                             <TableCell className="font-medium">
                               Endereço IP
                             </TableCell>
-                            <TableCell>200.178.45.123</TableCell>
+                            <TableCell>{deviceDetails.ip || "N/A"}</TableCell>
                           </TableRow>
                           <TableRow>
                             <TableCell className="font-medium">
@@ -341,7 +506,7 @@ const TR069Management = () => {
                           </TableRow>
                           <TableRow>
                             <TableCell className="font-medium">Gateway</TableCell>
-                            <TableCell>200.178.45.1</TableCell>
+                            <TableCell>{deviceDetails.ip?.replace(/\d+$/, '1') || "N/A"}</TableCell>
                           </TableRow>
                           <TableRow>
                             <TableCell className="font-medium">
@@ -361,7 +526,9 @@ const TR069Management = () => {
 
                     <div className="flex justify-end gap-2">
                       <Button variant="outline">Cancelar</Button>
-                      <Button>Salvar Configurações</Button>
+                      <Button onClick={() => handleSaveSettings('wan')}>
+                        Salvar Configurações
+                      </Button>
                     </div>
                   </div>
                 </TabsContent>
@@ -528,7 +695,9 @@ const TR069Management = () => {
 
                     <div className="flex justify-end gap-2">
                       <Button variant="outline">Cancelar</Button>
-                      <Button>Salvar Configurações</Button>
+                      <Button onClick={() => handleSaveSettings('wifi')}>
+                        Salvar Configurações
+                      </Button>
                     </div>
                   </div>
                 </TabsContent>
@@ -586,78 +755,52 @@ const TR069Management = () => {
 
                       <Card className="md:col-span-2">
                         <CardHeader>
-                          <CardTitle className="text-base">
-                            Logs do Dispositivo
-                          </CardTitle>
-                          <CardDescription>
-                            Visualize os logs do dispositivo para diagnóstico
-                          </CardDescription>
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <CardTitle className="text-base">
+                                Logs do Dispositivo
+                              </CardTitle>
+                              <CardDescription>
+                                Visualize os logs do dispositivo para diagnóstico
+                              </CardDescription>
+                            </div>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => loadDeviceLogs(selectedDevice)}
+                              disabled={isLoadingLogs}
+                            >
+                              <RefreshCw 
+                                size={16} 
+                                className={`mr-2 ${isLoadingLogs ? 'animate-spin' : ''}`} 
+                              />
+                              Atualizar
+                            </Button>
+                          </div>
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-4">
                             <div className="bg-muted p-4 rounded-md h-[300px] overflow-y-auto font-mono text-xs">
                               <div className="space-y-1">
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:12:34]
-                                  </span>
-                                  DHCP: Received DISCOVER from AA:BB:CC:DD:EE:FF
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:12:34]
-                                  </span>
-                                  DHCP: Sending OFFER to AA:BB:CC:DD:EE:FF
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:12:34]
-                                  </span>
-                                  DHCP: Received REQUEST from AA:BB:CC:DD:EE:FF
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:12:34]
-                                  </span>
-                                  DHCP: Sending ACK to AA:BB:CC:DD:EE:FF
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:15:12]
-                                  </span>
-                                  WLAN: Client AA:11:BB:22:CC:33 connected to
-                                  ssid "VarzeaNet_2G"
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:18:54]
-                                  </span>
-                                  WAN: PPPoE connection established
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:18:55]
-                                  </span>
-                                  WAN: Got IP address 200.178.45.123
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:19:01]
-                                  </span>
-                                  TR-069: Sending Inform to ACS
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:19:02]
-                                  </span>
-                                  TR-069: Inform acknowledged by ACS
-                                </p>
-                                <p>
-                                  <span className="text-muted-foreground mr-2">
-                                    [2023-04-15 08:19:02]
-                                  </span>
-                                  TR-069: Processing GetParameterValues
-                                </p>
+                                {isLoadingLogs ? (
+                                  <div className="flex justify-center items-center h-full">
+                                    <Loader2 className="animate-spin mr-2" />
+                                    <span>Carregando logs...</span>
+                                  </div>
+                                ) : deviceLogs.length > 0 ? (
+                                  deviceLogs.map((log, index) => (
+                                    <p key={index}>
+                                      <span className="text-muted-foreground mr-2">
+                                        {log.split(']')[0]}]
+                                      </span>
+                                      {log.split(']')[1]}
+                                    </p>
+                                  ))
+                                ) : (
+                                  <div className="text-center text-muted-foreground">
+                                    Nenhum log disponível
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -665,10 +808,6 @@ const TR069Management = () => {
                               <Button variant="outline">
                                 <Download size={16} className="mr-2" />
                                 Baixar Logs
-                              </Button>
-                              <Button>
-                                <RefreshCw size={16} className="mr-2" />
-                                Atualizar Logs
                               </Button>
                             </div>
                           </div>
@@ -687,7 +826,6 @@ const TR069Management = () => {
                 <p className="text-muted-foreground mb-6">
                   Por favor, selecione um dispositivo para configurar
                 </p>
-                <Button>Selecionar Dispositivo</Button>
               </div>
             )}
           </CardContent>

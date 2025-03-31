@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   Table,
@@ -15,7 +15,6 @@ import {
   ChevronUp,
   MoreHorizontal,
   Search,
-  Wifi,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,65 +27,39 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-
-// Mock data para dispositivos
-const mockDevices = [
-  {
-    id: "XBHQU23321002432",
-    name: "Roteador WiFi Fibra",
-    ip: "192.168.1.1",
-    model: "ZTE F670L",
-    lastSeen: new Date().toISOString(),
-    status: "online",
-    firmware: "1.2.3",
-    customer: "João Silva",
-  },
-  {
-    id: "XBHQU23321002433",
-    name: "Roteador ONT",
-    ip: "192.168.1.2",
-    model: "TP-Link AC1200",
-    lastSeen: new Date(Date.now() - 3600000).toISOString(),
-    status: "warning",
-    firmware: "2.1.0",
-    customer: "Maria Souza",
-  },
-  {
-    id: "XBHQU23321002434",
-    name: "Mesh Extensor",
-    ip: "192.168.1.3",
-    model: "Intelbras W5S",
-    lastSeen: new Date(Date.now() - 86400000).toISOString(),
-    status: "offline",
-    firmware: "3.0.1",
-    customer: "Pedro Oliveira",
-  },
-  {
-    id: "XBHQU23321002435",
-    name: "Roteador WiFi Fibra",
-    ip: "192.168.1.4",
-    model: "ZTE F670L",
-    lastSeen: new Date().toISOString(),
-    status: "online",
-    firmware: "1.2.3",
-    customer: "Ana Pereira",
-  },
-  {
-    id: "XBHQU23321002436",
-    name: "ONT Fibra",
-    ip: "192.168.1.5",
-    model: "Huawei HG8245H",
-    lastSeen: new Date().toISOString(),
-    status: "online",
-    firmware: "1.3.5",
-    customer: "Carlos Mendes",
-  },
-];
+import { tr069Service, TR069Device } from "@/services/tr069Service";
+import { toast } from "@/hooks/use-toast";
+import { AddDeviceDialog } from "./AddDeviceDialog";
 
 const DeviceList = () => {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [devices, setDevices] = useState<TR069Device[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Carregar dispositivos quando o componente montar
+  useEffect(() => {
+    loadDevices();
+  }, []);
+
+  // Função para carregar dispositivos do serviço TR-069
+  const loadDevices = async () => {
+    setIsLoading(true);
+    try {
+      const loadedDevices = await tr069Service.getDevices();
+      setDevices(loadedDevices);
+    } catch (error) {
+      console.error("Erro ao carregar dispositivos:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar a lista de dispositivos",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -97,11 +70,11 @@ const DeviceList = () => {
     }
   };
 
-  const filteredDevices = mockDevices.filter(
+  const filteredDevices = devices.filter(
     (device) =>
       device.id.toLowerCase().includes(search.toLowerCase()) ||
       device.name.toLowerCase().includes(search.toLowerCase()) ||
-      device.customer.toLowerCase().includes(search.toLowerCase()) ||
+      (device.customer && device.customer.toLowerCase().includes(search.toLowerCase())) ||
       device.ip.includes(search)
   );
 
@@ -109,12 +82,28 @@ const DeviceList = () => {
     const aValue = a[sortBy as keyof typeof a];
     const bValue = b[sortBy as keyof typeof b];
 
+    if (!aValue || !bValue) return 0;
+
     if (sortDirection === "asc") {
       return aValue > bValue ? 1 : -1;
     } else {
       return aValue < bValue ? 1 : -1;
     }
   });
+
+  // Função para lidar com a reinicialização do dispositivo
+  const handleRebootDevice = async (deviceId: string) => {
+    try {
+      await tr069Service.rebootDevice(deviceId);
+    } catch (error) {
+      console.error("Erro ao reiniciar dispositivo:", error);
+    }
+  };
+
+  // Função para adicionar um novo dispositivo
+  const handleDeviceAdded = (device: TR069Device) => {
+    setDevices((prev) => [...prev, device]);
+  };
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
@@ -160,14 +149,17 @@ const DeviceList = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="h-9">
-            <RefreshCw size={16} className="mr-2" />
-            <span>Atualizar</span>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-9" 
+            onClick={loadDevices}
+            disabled={isLoading}
+          >
+            <RefreshCw size={16} className={`mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? "Carregando..." : "Atualizar"}</span>
           </Button>
-          <Button size="sm" className="h-9">
-            <Wifi size={16} className="mr-2" />
-            <span>Adicionar Dispositivo</span>
-          </Button>
+          <AddDeviceDialog onDeviceAdded={handleDeviceAdded} />
         </div>
       </div>
 
@@ -231,7 +223,7 @@ const DeviceList = () => {
               <TableRow key={device.id}>
                 <TableCell className="font-medium">
                   <Link
-                    to={`/devices/${device.id}`}
+                    to={`/tr069?device=${device.id}`}
                     className="text-primary hover:underline"
                   >
                     {device.id}
@@ -241,7 +233,7 @@ const DeviceList = () => {
                 <TableCell>{device.ip}</TableCell>
                 <TableCell>{device.model}</TableCell>
                 <TableCell>{renderStatusBadge(device.status)}</TableCell>
-                <TableCell>{device.customer}</TableCell>
+                <TableCell>{device.customer || "-"}</TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -252,9 +244,13 @@ const DeviceList = () => {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Ações</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>Configurar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => window.location.href = `/tr069?device=${device.id}`}>
+                        Configurar
+                      </DropdownMenuItem>
                       <DropdownMenuItem>Atualizar Firmware</DropdownMenuItem>
-                      <DropdownMenuItem>Reiniciar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleRebootDevice(device.id)}>
+                        Reiniciar
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem className="text-red-600">
                         Remover
@@ -268,12 +264,17 @@ const DeviceList = () => {
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-10">
                   <div className="flex flex-col items-center gap-2">
-                    <Wifi className="h-8 w-8 text-muted-foreground" />
+                    <Search className="h-8 w-8 text-muted-foreground" />
                     <p className="text-lg font-medium">
-                      Nenhum dispositivo encontrado
+                      {isLoading 
+                        ? "Carregando dispositivos..." 
+                        : "Nenhum dispositivo encontrado"
+                      }
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Tente ajustar os filtros ou adicionar novos dispositivos.
+                      {!isLoading && (
+                        "Tente ajustar os filtros ou adicionar novos dispositivos."
+                      )}
                     </p>
                   </div>
                 </TableCell>
